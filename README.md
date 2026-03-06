@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.png" alt="ClothDD banner" width="100%">
+  <img src="assets/banner.png" alt="ClothDD banner" width="100%">
 </p>
 
 <h1 align="center">ClothDD</h1>
@@ -45,14 +45,14 @@
 ## Demo
 
 <p align="center">
-  <video src="demovid.mp4" width="720" autoplay loop muted playsinline>
+  <video src="assets/demovid.mp4" width="720" autoplay loop muted playsinline>
     Your browser does not support the video tag.
   </video>
 </p>
 
 | Baseline | Dense Showcase | Ball Drop | Ultra Dense |
 |:--------:|:--------------:|:---------:|:-----------:|
-| ![Baseline](image.png) | ![Dense](image-1.png) | ![Ball](image-2.png) | ![Ultra](image-3.png) |
+| ![Baseline](assets/image.png) | ![Dense](assets/image-1.png) | ![Ball](assets/image-2.png) | ![Ultra](assets/image-3.png) |
 
 <br>
 
