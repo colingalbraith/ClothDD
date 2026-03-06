@@ -1,0 +1,36 @@
+# Build outputs
+build/
+build_fresh/
+build_offline/
+
+# Local env / editor files
+.venv/
+.DS_Store
+imgui.ini
+
+# CMake / generated caches
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# macOS artifacts
+*.dSYM/
+
+# Research docs
+*.pdf
+
+# Large HDRI assets (download separately)
+*.exr
+
+# Original .mov (converted to .mp4)
+*.mov
+
+# Unused 4K texture maps (only diff_4k.jpg is used)
+cotton_jersey_4k.blend/textures/*_anisotropy_*.png
+cotton_jersey_4k.blend/textures/*_disp_*.png
+cotton_jersey_4k.blend/textures/*_spec_ior_*.png
+cotton_jersey_4k.blend/cotton_jersey_4k.blend
+
+# Original uncompressed banner
+Colin Galbraith.png
