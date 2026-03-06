@@ -45,7 +45,7 @@
 ## Demo
 
 <p align="center">
-  <video src="assets/demovid.mp4" width="720" autoplay loop muted playsinline>
+  <video src="https://github.com/user-attachments/assets/f1334406-6a4a-426a-ac50-c13572ce2886" width="720" autoplay loop muted playsinline>
     Your browser does not support the video tag.
   </video>
 </p>
