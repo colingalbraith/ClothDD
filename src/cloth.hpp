@@ -4,7 +4,10 @@
 
 #pragma once
 
+#include <memory>
 #include <vector>
+
+class ThreadPool;
 
 struct Vec3 {
   float x = 0.0f;
@@ -64,6 +67,9 @@ struct Spring {
 class Cloth {
 public:
   Cloth(int widthPoints, int heightPoints, float pointSpacing);
+  ~Cloth();
+  Cloth(Cloth &&other) noexcept;
+  Cloth &operator=(Cloth &&other) noexcept;
 
   void reset();
   void unpinAll();
@@ -95,6 +101,7 @@ public:
   bool squareDomainDecompositionEnabled() const {
     return m_squareDomainDecompositionEnabled;
   }
+  int workerThreadCount() const;
 
   const std::vector<Vec3> &positions() const { return m_positions; }
   const std::vector<Vec2> &uvs() const { return m_uvs; }
@@ -154,4 +161,6 @@ private:
   bool m_squareDomainDecompositionEnabled = false;
   float m_springStiffness = 1.0f;
   float m_damping = 0.995f;
+
+  std::unique_ptr<ThreadPool> m_threadPool;
 };

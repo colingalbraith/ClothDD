@@ -89,7 +89,7 @@ int main() {
       char title[256];
       std::snprintf(title,
                     sizeof(title),
-                    "ClothDD (%s) | FPS %.0f | %dx%d | iters %d substeps %d | domains %d %s",
+                    "ClothDD (%s) | FPS %.0f | %dx%d | iters %d substeps %d | domains %d %s | threads %d",
                     presetName,
                     titleFps,
                     app.cloth.width(),
@@ -97,7 +97,8 @@ int main() {
                     app.solverIterations,
                     app.substeps,
                     app.domainCount,
-                    domainLayout);
+                    domainLayout,
+                    app.cloth.workerThreadCount());
       glfwSetWindowTitle(window, title);
       titleAccumulator = 0.0;
       titleFrames = 0;

@@ -3,6 +3,7 @@
 ///        Verlet integration, collision response, and domain decomposition.
 
 #include "cloth.hpp"
+#include "thread_pool.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,9 +40,14 @@ Vec3 normalize(const Vec3 &value) {
 
 Cloth::Cloth(int widthPoints, int heightPoints, float pointSpacing)
     : m_width(std::max(2, widthPoints)), m_height(std::max(2, heightPoints)),
-      m_spacing(std::max(1e-4f, pointSpacing)) {
+      m_spacing(std::max(1e-4f, pointSpacing)),
+      m_threadPool(std::make_unique<ThreadPool>()) {
   reset();
 }
+
+Cloth::~Cloth() = default;
+Cloth::Cloth(Cloth &&other) noexcept = default;
+Cloth &Cloth::operator=(Cloth &&other) noexcept = default;
 
 void Cloth::reset() {
   const int pointCount = m_width * m_height;
@@ -100,12 +106,18 @@ void Cloth::simulate(float dt, int solverIterations, const Vec3 &gravity,
   for (int iteration = 0; iteration < iterations; ++iteration) {
     if (m_domainLocalSolveEnabled && m_domainCount > 1 &&
         !m_domainSpringIndices.empty()) {
-      for (const std::vector<int> &domainSprings : m_domainSpringIndices) {
-        for (int springIndex : domainSprings) {
+      // Solve domain-local springs in parallel — each domain's springs only
+      // reference particles within that domain, so there are no data races.
+      const int domainSlots =
+          static_cast<int>(m_domainSpringIndices.size());
+      m_threadPool->run(domainSlots, [this](int d) {
+        for (int springIndex :
+             m_domainSpringIndices[static_cast<std::size_t>(d)]) {
           solveSpringConstraint(
               m_springs[static_cast<std::size_t>(springIndex)]);
         }
-      }
+      });
+      // Interface springs cross domain boundaries — solve sequentially.
       for (int springIndex : m_interfaceSpringIndices) {
         solveSpringConstraint(m_springs[static_cast<std::size_t>(springIndex)]);
       }
@@ -159,6 +171,10 @@ void Cloth::setSpringStiffness(float stiffness) {
 
 void Cloth::setDamping(float damping) {
   m_damping = std::clamp(damping, 0.9f, 1.0f);
+}
+
+int Cloth::workerThreadCount() const {
+  return m_threadPool ? m_threadPool->threadCount() : 1;
 }
 
 int Cloth::index(int x, int y) const { return y * m_width + x; }
