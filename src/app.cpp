@@ -11,6 +11,10 @@
 #include <cmath>
 #include <cstdio>
 
+#ifndef GL_MULTISAMPLE
+#define GL_MULTISAMPLE 0x809D
+#endif
+
 namespace clothdd {
 void applyPreset(AppState &app, ScenePreset preset) {
   app.scenePreset = preset;
@@ -34,7 +38,7 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = true;
-    app.drawGround = false;
+    app.drawGround = true;
     app.showDomains = true;
     app.showPinnedPoints = true;
     app.hdriBackgroundEnabled = true;
@@ -67,7 +71,7 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = true;
-    app.drawGround = false;
+    app.drawGround = true;
     app.showDomains = true;
     app.showPinnedPoints = false;
     app.hdriBackgroundEnabled = true;
@@ -100,7 +104,7 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = true;
-    app.drawGround = false;
+    app.drawGround = true;
     app.showDomains = true;
     app.showPinnedPoints = false;
     app.hdriBackgroundEnabled = true;
@@ -135,7 +139,7 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = false;
-    app.drawGround = false;
+    app.drawGround = true;
     app.showDomains = false;
     app.showPinnedPoints = false;
     app.hdriBackgroundEnabled = true;
@@ -181,6 +185,7 @@ void configureOpenGLState() {
 
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
+  glEnable(GL_MULTISAMPLE);
 
   glEnable(GL_LIGHT0);
   const GLfloat ambient[] = {0.24f, 0.24f, 0.24f, 1.0f};
@@ -259,10 +264,10 @@ void pollCameraKeys(GLFWwindow *window, AppState &app, float dt) {
   constexpr float kPi = 3.14159265358979323846f;
   const float moveSpeed = 3.0f * dt;
   const float yawRad = app.yaw * kPi / 180.0f;
-  const float forwardX = -std::sin(yawRad);
+  const float forwardX = std::sin(yawRad);
   const float forwardZ = -std::cos(yawRad);
   const float rightX = std::cos(yawRad);
-  const float rightZ = -std::sin(yawRad);
+  const float rightZ = std::sin(yawRad);
 
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
     app.targetX += forwardX * moveSpeed;
@@ -285,6 +290,13 @@ void pollCameraKeys(GLFWwindow *window, AppState &app, float dt) {
   }
   if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
     app.targetY += moveSpeed;
+  }
+  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    app.targetY += moveSpeed;
+  }
+  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+      glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+    app.targetY -= moveSpeed;
   }
 }
 

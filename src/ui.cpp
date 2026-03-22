@@ -11,6 +11,10 @@
 #include <cmath>
 #include <cstdio>
 
+#ifndef GL_MULTISAMPLE
+#define GL_MULTISAMPLE 0x809D
+#endif
+
 namespace clothdd {
 namespace {
 
@@ -110,6 +114,10 @@ void drawImGuiPanel(AppState &app, float fps) {
   if (ImGui::Button("Reset Scene")) {
     app.cloth.reset();
   }
+  ImGui::SameLine();
+  if (ImGui::Button("Drop Cloth")) {
+    app.cloth.unpinAll();
+  }
 
   ImGui::SeparatorText("Simulation");
   ImGui::SliderInt("Substeps", &app.substeps, 1, 8);
@@ -149,6 +157,13 @@ void drawImGuiPanel(AppState &app, float fps) {
   ImGui::Checkbox("Domain Overlay", &app.showDomains);
   ImGui::Checkbox("Pinned Points", &app.showPinnedPoints);
   ImGui::Checkbox("HDRI Background", &app.hdriBackgroundEnabled);
+  if (ImGui::Checkbox("MSAA (2x)", &app.msaaEnabled)) {
+    if (app.msaaEnabled) {
+      glEnable(GL_MULTISAMPLE);
+    } else {
+      glDisable(GL_MULTISAMPLE);
+    }
+  }
   ImGui::TextUnformatted(app.hdriPath.c_str());
 
   ImGui::SliderFloat("Point Size", &app.debugPointSize, 1.0f, 10.0f, "%.1f");
@@ -199,7 +214,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action,
   case GLFW_KEY_ESCAPE:
     glfwSetWindowShouldClose(window, GLFW_TRUE);
     break;
-  case GLFW_KEY_SPACE:
+  case GLFW_KEY_P:
     app->paused = !app->paused;
     break;
   case GLFW_KEY_PERIOD:
@@ -216,6 +231,15 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action,
     break;
   case GLFW_KEY_4:
     applyPreset(*app, ScenePreset::UltraDense);
+    break;
+  case GLFW_KEY_G:
+    app->cloth.unpinAll();
+    break;
+  case GLFW_KEY_R:
+    applyPreset(*app, app->scenePreset);
+    break;
+  case GLFW_KEY_CAPS_LOCK:
+    app->paused = !app->paused;
     break;
   default:
     break;

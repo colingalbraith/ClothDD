@@ -72,6 +72,7 @@ struct AppState {
 
   bool showUi = true;
   bool showImGuiDemo = false;
+  bool msaaEnabled = true;
   float smoothedFps = 0.0f;
 
   static constexpr int kFpsHistorySize = 128;

@@ -23,6 +23,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -220,15 +221,36 @@ void drawHdriSkyDome(const AppState &app) {
 
 void drawGroundPlane(float y, const std::array<float, 3> &color) {
   glEnable(GL_LIGHTING);
-  setColor(color);
   glNormal3f(0.0f, 1.0f, 0.0f);
 
-  constexpr float size = 3.8f;
+  constexpr float kExtent = 6.0f;
+  constexpr float kTileSize = 0.5f;
+  constexpr int kTiles =
+      static_cast<int>(2.0f * kExtent / kTileSize);
+
+  const float darkScale = 0.55f;
+  const std::array<float, 3> colorA = color;
+  const std::array<float, 3> colorB = {
+      color[0] * darkScale, color[1] * darkScale, color[2] * darkScale};
+
   glBegin(GL_QUADS);
-  glVertex3f(-size, y, -size);
-  glVertex3f(size, y, -size);
-  glVertex3f(size, y, size);
-  glVertex3f(-size, y, size);
+  for (int iz = 0; iz < kTiles; ++iz) {
+    for (int ix = 0; ix < kTiles; ++ix) {
+      const bool dark = ((ix + iz) & 1) != 0;
+      const auto &c = dark ? colorB : colorA;
+      glColor3f(c[0], c[1], c[2]);
+
+      const float x0 = -kExtent + static_cast<float>(ix) * kTileSize;
+      const float z0 = -kExtent + static_cast<float>(iz) * kTileSize;
+      const float x1 = x0 + kTileSize;
+      const float z1 = z0 + kTileSize;
+
+      glVertex3f(x0, y, z0);
+      glVertex3f(x1, y, z0);
+      glVertex3f(x1, y, z1);
+      glVertex3f(x0, y, z1);
+    }
+  }
   glEnd();
 }
 
@@ -415,6 +437,134 @@ void drawPinnedPoints(const Cloth &cloth, const AppState &app) {
   glEnd();
 }
 
+// ---------------------------------------------------------------------------
+// Wind particles — lightweight streaks that visualise the current wind field.
+// ---------------------------------------------------------------------------
+
+struct WindParticle {
+  Vec3 pos;
+  Vec3 vel;
+  float life;    // remaining lifetime (seconds)
+  float maxLife; // total lifetime (for alpha fade)
+};
+
+struct WindParticleState {
+  std::vector<WindParticle> particles;
+  bool initialised = false;
+};
+
+WindParticleState &windParticles() {
+  static WindParticleState state;
+  return state;
+}
+
+void updateAndDrawWindParticles(const AppState &app, float dt) {
+  if (app.windStrength < 0.01f) {
+    windParticles().particles.clear();
+    return;
+  }
+
+  WindParticleState &state = windParticles();
+
+  // Spawn region centred around the cloth.
+  constexpr float kSpawnExtent = 3.5f;
+  constexpr float kSpawnYLow = -2.5f;
+  constexpr float kSpawnYHigh = 2.5f;
+  constexpr int kMaxParticles = 900;
+  constexpr float kParticleLifetime = 2.4f;
+
+  const Vec3 &wind = app.lastWindDirection;
+  const float windLen = length(wind);
+  const Vec3 windDir =
+      windLen > 1e-6f ? wind / windLen : Vec3{1.0f, 0.0f, 0.0f};
+  const float speed = app.windStrength * 0.35f;
+
+  // --- spawn new particles ---
+  const int spawnCount =
+      std::min(14, kMaxParticles - static_cast<int>(state.particles.size()));
+  for (int i = 0; i < spawnCount; ++i) {
+    WindParticle p;
+    const float rx =
+        (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) *
+            2.0f -
+        1.0f;
+    const float ry =
+        (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX));
+    const float rz =
+        (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) *
+            2.0f -
+        1.0f;
+    // Spawn particles upwind so they blow through the scene.
+    p.pos = Vec3{rx * kSpawnExtent - windDir.x * kSpawnExtent,
+                 kSpawnYLow + ry * (kSpawnYHigh - kSpawnYLow),
+                 rz * kSpawnExtent - windDir.z * kSpawnExtent};
+    // Small random jitter on top of the main wind velocity.
+    const float jx =
+        (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) -
+         0.5f) *
+        0.4f;
+    const float jy =
+        (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) -
+         0.5f) *
+        0.15f;
+    const float jz =
+        (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) -
+         0.5f) *
+        0.4f;
+    p.vel = Vec3{windDir.x * speed + jx, windDir.y * speed + jy,
+                 windDir.z * speed + jz};
+    p.life = kParticleLifetime *
+             (0.6f + 0.4f * static_cast<float>(std::rand()) /
+                         static_cast<float>(RAND_MAX));
+    p.maxLife = p.life;
+    state.particles.push_back(p);
+  }
+
+  // --- update & cull ---
+  for (auto it = state.particles.begin(); it != state.particles.end();) {
+    it->pos.x += it->vel.x * dt;
+    it->pos.y += it->vel.y * dt;
+    it->pos.z += it->vel.z * dt;
+    it->life -= dt;
+    if (it->life <= 0.0f) {
+      it = state.particles.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  if (state.particles.empty()) {
+    return;
+  }
+
+  // --- draw as short streaks ---
+  const GLboolean lightingWas = glIsEnabled(GL_LIGHTING);
+  glDisable(GL_LIGHTING);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glLineWidth(2.5f);
+
+  glBegin(GL_LINES);
+  for (const WindParticle &p : state.particles) {
+    const float t = p.life / p.maxLife; // 1 at spawn → 0 at death
+    const float alpha = t * 0.55f;
+    glColor4f(0.85f, 0.92f, 1.0f, alpha);
+    glVertex3f(p.pos.x, p.pos.y, p.pos.z);
+    // Trail end: a short distance behind.
+    const float trailLen = 0.25f + (1.0f - t) * 0.15f;
+    glColor4f(0.85f, 0.92f, 1.0f, 0.0f);
+    glVertex3f(p.pos.x - p.vel.x * trailLen,
+               p.pos.y - p.vel.y * trailLen,
+               p.pos.z - p.vel.z * trailLen);
+  }
+  glEnd();
+
+  glDisable(GL_BLEND);
+  if (lightingWas == GL_TRUE) {
+    glEnable(GL_LIGHTING);
+  }
+}
+
 void drawDebugVisualizations(const Cloth &cloth, const AppState &app) {
   drawPinnedPoints(cloth, app);
 }
@@ -458,6 +608,11 @@ void renderFrame(const AppState &app, int framebufferWidth,
 
   drawCloth(app.cloth, app);
   drawDebugVisualizations(app.cloth, app);
+
+  // Wind particles (use a rough dt from the smoothed FPS).
+  const float particleDt =
+      app.smoothedFps > 1.0f ? 1.0f / app.smoothedFps : 1.0f / 60.0f;
+  updateAndDrawWindParticles(app, particleDt);
 }
 
 } // namespace clothdd

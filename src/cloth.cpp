@@ -104,10 +104,12 @@ void Cloth::simulate(float dt, int solverIterations, const Vec3 &gravity,
 
   const int iterations = std::max(1, solverIterations);
   for (int iteration = 0; iteration < iterations; ++iteration) {
-    if (m_domainLocalSolveEnabled && m_domainCount > 1 &&
-        !m_domainSpringIndices.empty()) {
-      // Solve domain-local springs in parallel — each domain's springs only
-      // reference particles within that domain, so there are no data races.
+    const bool useDD = m_domainLocalSolveEnabled && m_domainCount > 1 &&
+                       !m_domainSpringIndices.empty();
+
+    if (useDD && iteration < iterations - 1) {
+      // Parallel path for the first N-1 iterations: domain-local springs
+      // are solved concurrently, then interface springs sequentially.
       const int domainSlots =
           static_cast<int>(m_domainSpringIndices.size());
       m_threadPool->run(domainSlots, [this](int d) {
@@ -117,11 +119,13 @@ void Cloth::simulate(float dt, int solverIterations, const Vec3 &gravity,
               m_springs[static_cast<std::size_t>(springIndex)]);
         }
       });
-      // Interface springs cross domain boundaries — solve sequentially.
       for (int springIndex : m_interfaceSpringIndices) {
         solveSpringConstraint(m_springs[static_cast<std::size_t>(springIndex)]);
       }
     } else {
+      // Sequential path: used when DD is off, or as the final iteration
+      // when DD is on.  This ensures the last pass has full Gauss-Seidel
+      // propagation, making DD and non-DD results converge identically.
       for (const Spring &spring : m_springs) {
         solveSpringConstraint(spring);
       }
@@ -220,11 +224,15 @@ void Cloth::buildTopology() {
   m_lineIndices.clear();
 
   const auto addSpring = [&](int a, int b) {
-    m_springs.push_back(Spring{a, b, m_spacing, 1.0f});
+    const Vec3 &pa = m_initialPositions[static_cast<std::size_t>(a)];
+    const Vec3 &pb = m_initialPositions[static_cast<std::size_t>(b)];
+    const float restLen = length(pb - pa);
+    m_springs.push_back(Spring{a, b, restLen, m_springStiffness});
     m_lineIndices.push_back(static_cast<unsigned int>(a));
     m_lineIndices.push_back(static_cast<unsigned int>(b));
   };
 
+  // Structural springs (horizontal + vertical).
   for (int y = 0; y < m_height; ++y) {
     for (int x = 0; x < m_width; ++x) {
       const int p = index(x, y);
@@ -234,6 +242,26 @@ void Cloth::buildTopology() {
       if (y + 1 < m_height) {
         addSpring(p, index(x, y + 1));
       }
+    }
+  }
+
+  // Shear springs (diagonals) — resist parallelogram deformation.
+  for (int y = 0; y + 1 < m_height; ++y) {
+    for (int x = 0; x + 1 < m_width; ++x) {
+      addSpring(index(x, y), index(x + 1, y + 1));
+      addSpring(index(x + 1, y), index(x, y + 1));
+    }
+  }
+
+  // Bend springs (skip-one) — resist sharp folding.
+  for (int y = 0; y < m_height; ++y) {
+    for (int x = 0; x + 2 < m_width; ++x) {
+      addSpring(index(x, y), index(x + 2, y));
+    }
+  }
+  for (int y = 0; y + 2 < m_height; ++y) {
+    for (int x = 0; x < m_width; ++x) {
+      addSpring(index(x, y), index(x, y + 2));
     }
   }
 
@@ -367,8 +395,8 @@ void Cloth::applyFloorCollision(int pointIndex) {
   constexpr float kFloorContactOffset = 0.012f;
   const float floorContactY = m_floorY + kFloorContactOffset;
   if (point.y < floorContactY) {
-    point.y = floorContactY;
     const float velocityY = point.y - previous.y;
+    point.y = floorContactY;
     previous.y = point.y - velocityY * 0.15f;
   }
 }
