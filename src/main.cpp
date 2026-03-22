@@ -80,26 +80,40 @@ int main() {
     beginImGuiFrame();
     drawImGuiPanel(app, app.smoothedFps);
 
-    stepSimulation(app, now, dt);
+    {
+      const double simStart = glfwGetTime();
+      stepSimulation(app, now, dt);
+      const double simEnd = glfwGetTime();
+      app.simTimeMs = static_cast<float>((simEnd - simStart) * 1000.0);
+    }
 
     int framebufferWidth = 1;
     int framebufferHeight = 1;
     glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
-    renderFrame(app, framebufferWidth, framebufferHeight);
 
-    renderImGuiFrame();
+    {
+      const double renderStart = glfwGetTime();
+      renderFrame(app, framebufferWidth, framebufferHeight);
+      renderImGuiFrame();
+      const double renderEnd = glfwGetTime();
+      app.renderTimeMs = static_cast<float>((renderEnd - renderStart) * 1000.0);
+    }
+
+    app.frameTimeMs = dt * 1000.0f;
     glfwSwapBuffers(window);
 
     titleAccumulator += dt;
     ++titleFrames;
     if (titleAccumulator >= 0.4) {
       const float titleFps = static_cast<float>(titleFrames / titleAccumulator);
-      const char* presetName = (app.scenePreset == ScenePreset::DenseShowcase)
+      const char* presetName = (app.scenePreset == ScenePreset::ExtremeDense)
+                                   ? "Extreme Dense"
+                               : (app.scenePreset == ScenePreset::UltraDense)
+                                   ? "Ultra Dense"
+                               : (app.scenePreset == ScenePreset::DenseShowcase)
                                    ? "Dense Showcase"
                                : (app.scenePreset == ScenePreset::BallDrop)
                                    ? "Ball Drop"
-                               : (app.scenePreset == ScenePreset::UltraDense)
-                                   ? "Ultra Dense"
                                    : "Baseline";
       const char* domainLayout = app.squareDomainDecomposition ? "square" : "strips";
       char title[256];

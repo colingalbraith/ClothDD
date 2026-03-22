@@ -164,6 +164,41 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.cloth.setFloorEnabled(true);
     app.cloth.setFloorY(-2.8f);
     break;
+  case ScenePreset::ExtremeDense:
+    app.cloth = Cloth(480, 352, 0.00875f);
+    app.solverIterations = 16;
+    app.substeps = 6;
+    app.gravity = -9.81f;
+    app.windStrength = 12.0f;
+    app.windFrequencyX = 0.45f;
+    app.windFrequencyZ = 0.35f;
+    app.windVerticalBias = 0.12f;
+    app.domainLocalSolveEnabled = true;
+    app.squareDomainDecomposition = true;
+    app.domainCount = 64;
+    app.structuralCompliance = 1e-7f;
+    app.shearCompliance = 1e-5f;
+    app.bendCompliance = 1e-3f;
+    app.clothDamping = 0.995f;
+    app.drawSurface = true;
+    app.drawWireframe = false;
+    app.drawGround = true;
+    app.showDomains = false;
+    app.showPinnedPoints = false;
+    app.hdriBackgroundEnabled = true;
+    app.clearColor = {0.01f, 0.02f, 0.04f};
+    app.clothColor = {0.22f, 0.58f, 0.42f};
+    app.wireColor = {0.01f, 0.01f, 0.01f};
+    app.groundColor = {0.12f, 0.12f, 0.16f};
+    app.pinnedColor = {0.40f, 0.90f, 0.60f};
+    app.debugPointSize = 1.5f;
+    app.debugLineWidth = 1.0f;
+    app.yaw = 12.0f;
+    app.pitch = -26.0f;
+    app.distance = 10.0f;
+    app.cloth.setFloorEnabled(true);
+    app.cloth.setFloorY(-3.0f);
+    break;
   }
 
   app.lastWindDirection = Vec3{1.0f, 0.0f, 0.0f};
@@ -261,7 +296,8 @@ void stepSimulation(AppState &app, double now, float dt) {
                              std::cos(t * app.windFrequencyZ)};
     app.lastWindDirection = windDirection;
 
-    if (app.gpuSolverEnabled && app.gpuSolver.available()) {
+    if (app.domainLocalSolveEnabled && app.gpuSolverEnabled &&
+        app.gpuSolver.available()) {
       app.gpuSolver.simulate(app.cloth, stepDt,
                              std::max(1, app.solverIterations),
                              Vec3{0.0f, app.gravity, 0.0f}, windDirection,

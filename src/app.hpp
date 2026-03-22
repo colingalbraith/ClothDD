@@ -28,6 +28,7 @@ enum class ScenePreset {
   DenseShowcase = 1,
   BallDrop = 2,
   UltraDense = 3,
+  ExtremeDense = 4,
 };
 
 struct AppState {
@@ -85,9 +86,15 @@ struct AppState {
 
   bool showUi = true;
   bool showImGuiDemo = false;
+  bool showDebugInfo = false;
   bool msaaEnabled = true;
   bool gpuSolverEnabled = false;
   GpuSolver gpuSolver;
+
+  // Timing (milliseconds).
+  float simTimeMs = 0.0f;
+  float renderTimeMs = 0.0f;
+  float frameTimeMs = 0.0f;
   float smoothedFps = 0.0f;
 
   static constexpr int kFpsHistorySize = 128;

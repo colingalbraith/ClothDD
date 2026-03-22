@@ -97,7 +97,7 @@ void drawImGuiPanel(AppState &app, float fps) {
 
   int presetIndex = static_cast<int>(app.scenePreset);
   const char *presetLabels[] = {"Baseline", "Dense Showcase", "Ball Drop",
-                                "Ultra Dense"};
+                                "Ultra Dense", "Extreme Dense"};
   if (ImGui::Combo("Scene Preset", &presetIndex, presetLabels,
                    IM_ARRAYSIZE(presetLabels))) {
     applyPreset(app, static_cast<ScenePreset>(presetIndex));
@@ -151,22 +151,30 @@ void drawImGuiPanel(AppState &app, float fps) {
     app.cloth.setDamping(app.clothDamping);
   }
 
-  if (app.gpuSolver.available()) {
-    if (ImGui::Checkbox("GPU Compute Solver", &app.gpuSolverEnabled)) {
-      if (app.gpuSolverEnabled) {
-        app.gpuSolver.upload(app.cloth);
-      }
-    }
-  }
-  if (ImGui::Checkbox("Domain Decomposition", &app.domainLocalSolveEnabled)) {
+  ImGui::SeparatorText("Domain Decomposition");
+  if (ImGui::Checkbox("Enable DD", &app.domainLocalSolveEnabled)) {
     app.cloth.setDomainLocalSolveEnabled(app.domainLocalSolveEnabled);
   }
-  if (ImGui::Checkbox("Square Domains", &app.squareDomainDecomposition)) {
-    app.cloth.setSquareDomainDecompositionEnabled(
-        app.squareDomainDecomposition);
-  }
-  if (ImGui::SliderInt("Domain Count", &app.domainCount, 1, 32)) {
-    app.cloth.setDomainCount(app.domainCount);
+  if (app.domainLocalSolveEnabled) {
+    if (app.gpuSolver.available()) {
+      if (ImGui::Checkbox("GPU Accelerated", &app.gpuSolverEnabled)) {
+        if (app.gpuSolverEnabled) {
+          app.gpuSolver.upload(app.cloth);
+        }
+      }
+      ImGui::SameLine();
+      ImGui::TextDisabled("(graph-coloring compute)");
+    }
+    if (!app.gpuSolverEnabled) {
+      ImGui::TextDisabled("CPU threaded solver:");
+      if (ImGui::Checkbox("Square Domains", &app.squareDomainDecomposition)) {
+        app.cloth.setSquareDomainDecompositionEnabled(
+            app.squareDomainDecomposition);
+      }
+      if (ImGui::SliderInt("Domain Count", &app.domainCount, 1, 32)) {
+        app.cloth.setDomainCount(app.domainCount);
+      }
+    }
   }
 
   ImGui::SeparatorText("Render");
@@ -189,7 +197,101 @@ void drawImGuiPanel(AppState &app, float fps) {
   ImGui::SliderFloat("Line Width", &app.debugLineWidth, 0.5f, 4.0f, "%.2f");
 
   ImGui::Checkbox("Show ImGui Demo", &app.showImGuiDemo);
+  ImGui::Checkbox("Debug Info", &app.showDebugInfo);
   ImGui::End();
+
+  if (app.showDebugInfo) {
+    ImGui::SetNextWindowPos(ImVec2(380.0f, 12.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(320.0f, 0.0f), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Debug Info", &app.showDebugInfo)) {
+
+      ImGui::SeparatorText("Timing");
+      ImGui::Text("Frame:      %.2f ms (%.0f FPS)", app.frameTimeMs,
+                  app.frameTimeMs > 0.01f ? 1000.0f / app.frameTimeMs : 0.0f);
+      ImGui::Text("Simulation: %.2f ms", app.simTimeMs);
+      ImGui::Text("Render:     %.2f ms", app.renderTimeMs);
+      const float otherMs =
+          app.frameTimeMs - app.simTimeMs - app.renderTimeMs;
+      ImGui::Text("Other:      %.2f ms", std::max(0.0f, otherMs));
+
+      // Sim breakdown bar.
+      if (app.frameTimeMs > 0.01f) {
+        const float simFrac = app.simTimeMs / app.frameTimeMs;
+        const float renFrac = app.renderTimeMs / app.frameTimeMs;
+        ImGui::Text("Sim %.0f%% | Render %.0f%% | Other %.0f%%",
+                    simFrac * 100.0f, renFrac * 100.0f,
+                    std::max(0.0f, (1.0f - simFrac - renFrac) * 100.0f));
+        const float barW = ImGui::GetContentRegionAvail().x;
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p, ImVec2(p.x + barW * simFrac, p.y + 14),
+                          IM_COL32(80, 180, 255, 255));
+        dl->AddRectFilled(ImVec2(p.x + barW * simFrac, p.y),
+                          ImVec2(p.x + barW * (simFrac + renFrac), p.y + 14),
+                          IM_COL32(255, 160, 80, 255));
+        dl->AddRectFilled(
+            ImVec2(p.x + barW * (simFrac + renFrac), p.y),
+            ImVec2(p.x + barW, p.y + 14), IM_COL32(100, 100, 100, 255));
+        ImGui::Dummy(ImVec2(barW, 18.0f));
+      }
+
+      ImGui::SeparatorText("Solver");
+      const char *solverName = "CPU Sequential (no DD)";
+      if (app.domainLocalSolveEnabled && app.gpuSolverEnabled &&
+          app.gpuSolver.available())
+        solverName = "DD + GPU Compute (graph-coloring)";
+      else if (app.domainLocalSolveEnabled)
+        solverName = "DD + CPU Threaded (strip/square)";
+      ImGui::Text("Active: %s", solverName);
+      ImGui::Text("Substeps: %d | Iterations: %d", app.substeps,
+                  app.solverIterations);
+      ImGui::Text("Total solves/frame: %d",
+                  app.substeps * app.solverIterations);
+
+      ImGui::SeparatorText("Mesh");
+      ImGui::Text("Grid: %d x %d (%zu particles)", app.cloth.width(),
+                  app.cloth.height(), app.cloth.positions().size());
+      ImGui::Text("Springs: %zu", app.cloth.springs().size());
+      // Count by type.
+      int nStruct = 0, nShear = 0, nBend = 0;
+      for (const auto &s : app.cloth.springs()) {
+        switch (s.type) {
+        case SpringType::Structural: ++nStruct; break;
+        case SpringType::Shear:      ++nShear;  break;
+        case SpringType::Bend:       ++nBend;   break;
+        }
+      }
+      ImGui::Text("  Structural: %d | Shear: %d | Bend: %d", nStruct,
+                  nShear, nBend);
+      ImGui::Text("Triangles: %zu",
+                  app.cloth.triangleIndices().size() / 3);
+
+      ImGui::SeparatorText("Hardware");
+#ifdef CLOTHDD_HAVE_GLAD
+      ImGui::Text("GL: %s", glGetString(GL_VERSION));
+      ImGui::Text("GPU: %s", glGetString(GL_RENDERER));
+      ImGui::Text("Vendor: %s", glGetString(GL_VENDOR));
+#else
+      ImGui::Text("GL: 2.1 (legacy, no GLAD)");
+#endif
+      ImGui::Text("CPU threads: %d", app.cloth.workerThreadCount());
+      ImGui::Text("GPU compute: %s",
+                  app.gpuSolver.available() ? "available" : "unavailable");
+
+      ImGui::SeparatorText("XPBD Compliance");
+      ImGui::Text("Structural: %.2e", app.structuralCompliance);
+      ImGui::Text("Shear:      %.2e", app.shearCompliance);
+      ImGui::Text("Bend:       %.2e", app.bendCompliance);
+      ImGui::Text("Damping:    %.4f", app.clothDamping);
+
+      if (app.domainLocalSolveEnabled && !app.gpuSolverEnabled) {
+        ImGui::SeparatorText("Domain Decomposition");
+        ImGui::Text("Domains: %d (%s)", app.domainCount,
+                    app.squareDomainDecomposition ? "square" : "strips");
+      }
+    }
+    ImGui::End();
+  }
 
   if (app.showImGuiDemo) {
     ImGui::ShowDemoWindow(&app.showImGuiDemo);
@@ -250,6 +352,9 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action,
     break;
   case GLFW_KEY_4:
     applyPreset(*app, ScenePreset::UltraDense);
+    break;
+  case GLFW_KEY_5:
+    applyPreset(*app, ScenePreset::ExtremeDense);
     break;
   case GLFW_KEY_G:
     app->cloth.unpinAll();
