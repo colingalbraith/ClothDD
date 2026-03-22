@@ -113,10 +113,14 @@ void drawImGuiPanel(AppState &app, float fps) {
   ImGui::SameLine();
   if (ImGui::Button("Reset Scene")) {
     app.cloth.reset();
+    if (app.gpuSolverEnabled && app.gpuSolver.available())
+      app.gpuSolver.upload(app.cloth);
   }
   ImGui::SameLine();
   if (ImGui::Button("Drop Cloth")) {
     app.cloth.unpinAll();
+    if (app.gpuSolverEnabled && app.gpuSolver.available())
+      app.gpuSolver.upload(app.cloth);
   }
 
   ImGui::SeparatorText("Simulation");
@@ -135,16 +139,22 @@ void drawImGuiPanel(AppState &app, float fps) {
                          1e-9f, 1e-3f, "%.2e",
                          ImGuiSliderFlags_Logarithmic)) {
     app.cloth.setStructuralCompliance(app.structuralCompliance);
+    if (app.gpuSolverEnabled && app.gpuSolver.available())
+      app.gpuSolver.upload(app.cloth);
   }
   if (ImGui::SliderFloat("Shear", &app.shearCompliance,
                          1e-7f, 1e-2f, "%.2e",
                          ImGuiSliderFlags_Logarithmic)) {
     app.cloth.setShearCompliance(app.shearCompliance);
+    if (app.gpuSolverEnabled && app.gpuSolver.available())
+      app.gpuSolver.upload(app.cloth);
   }
   if (ImGui::SliderFloat("Bend", &app.bendCompliance,
                          1e-5f, 1e+0f, "%.2e",
                          ImGuiSliderFlags_Logarithmic)) {
     app.cloth.setBendCompliance(app.bendCompliance);
+    if (app.gpuSolverEnabled && app.gpuSolver.available())
+      app.gpuSolver.upload(app.cloth);
   }
   if (ImGui::SliderFloat("Damping", &app.clothDamping, 0.9f, 1.0f,
                          "%.4f")) {
@@ -358,9 +368,13 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action,
     break;
   case GLFW_KEY_G:
     app->cloth.unpinAll();
+    if (app->gpuSolverEnabled && app->gpuSolver.available())
+      app->gpuSolver.upload(app->cloth);
     break;
   case GLFW_KEY_R:
     applyPreset(*app, app->scenePreset);
+    if (app->gpuSolverEnabled && app->gpuSolver.available())
+      app->gpuSolver.upload(app->cloth);
     break;
   case GLFW_KEY_CAPS_LOCK:
     app->paused = !app->paused;
