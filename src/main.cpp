@@ -19,8 +19,14 @@ int main() {
     return EXIT_FAILURE;
   }
 
+#ifdef CLOTHDD_HAVE_GLAD
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+#else
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+#endif
   glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
   glfwWindowHint(GLFW_SAMPLES, 2);
 
@@ -32,6 +38,15 @@ int main() {
   }
 
   glfwMakeContextCurrent(window);
+#ifdef CLOTHDD_HAVE_GLAD
+  if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
+    std::fprintf(stderr, "Failed to initialize GLAD.\n");
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return EXIT_FAILURE;
+  }
+  std::printf("OpenGL %s (GPU compute enabled)\n", glGetString(GL_VERSION));
+#endif
   glfwSwapInterval(0);
   initImGui(window);
 

@@ -129,16 +129,35 @@ void drawImGuiPanel(AppState &app, float fps) {
   ImGui::SliderFloat("Wind Vertical", &app.windVerticalBias, -1.0f, 1.0f,
                      "%.2f");
 
-  ImGui::SeparatorText("Spring Parameters");
-  if (ImGui::SliderFloat("Stiffness", &app.springStiffness, 0.01f, 1.0f,
-                         "%.3f")) {
-    app.cloth.setSpringStiffness(app.springStiffness);
+  ImGui::SeparatorText("Material (XPBD)");
+  ImGui::TextDisabled("Lower compliance = stiffer");
+  if (ImGui::SliderFloat("Structural", &app.structuralCompliance,
+                         1e-9f, 1e-3f, "%.2e",
+                         ImGuiSliderFlags_Logarithmic)) {
+    app.cloth.setStructuralCompliance(app.structuralCompliance);
+  }
+  if (ImGui::SliderFloat("Shear", &app.shearCompliance,
+                         1e-7f, 1e-2f, "%.2e",
+                         ImGuiSliderFlags_Logarithmic)) {
+    app.cloth.setShearCompliance(app.shearCompliance);
+  }
+  if (ImGui::SliderFloat("Bend", &app.bendCompliance,
+                         1e-5f, 1e+0f, "%.2e",
+                         ImGuiSliderFlags_Logarithmic)) {
+    app.cloth.setBendCompliance(app.bendCompliance);
   }
   if (ImGui::SliderFloat("Damping", &app.clothDamping, 0.9f, 1.0f,
                          "%.4f")) {
     app.cloth.setDamping(app.clothDamping);
   }
 
+  if (app.gpuSolver.available()) {
+    if (ImGui::Checkbox("GPU Compute Solver", &app.gpuSolverEnabled)) {
+      if (app.gpuSolverEnabled) {
+        app.gpuSolver.upload(app.cloth);
+      }
+    }
+  }
   if (ImGui::Checkbox("Domain Decomposition", &app.domainLocalSolveEnabled)) {
     app.cloth.setDomainLocalSolveEnabled(app.domainLocalSolveEnabled);
   }

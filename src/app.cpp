@@ -34,7 +34,9 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.domainLocalSolveEnabled = true;
     app.squareDomainDecomposition = false;
     app.domainCount = 12;
-    app.springStiffness = 1.0f;
+    app.structuralCompliance = 1e-7f;
+    app.shearCompliance = 1e-5f;
+    app.bendCompliance = 1e-3f;
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = true;
@@ -67,7 +69,9 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.domainLocalSolveEnabled = true;
     app.squareDomainDecomposition = false;
     app.domainCount = 28;
-    app.springStiffness = 1.0f;
+    app.structuralCompliance = 1e-7f;
+    app.shearCompliance = 1e-5f;
+    app.bendCompliance = 1e-3f;
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = true;
@@ -100,7 +104,9 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.domainLocalSolveEnabled = true;
     app.squareDomainDecomposition = false;
     app.domainCount = 16;
-    app.springStiffness = 1.0f;
+    app.structuralCompliance = 1e-7f;
+    app.shearCompliance = 1e-5f;
+    app.bendCompliance = 1e-3f;
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = true;
@@ -135,7 +141,9 @@ void applyPreset(AppState &app, ScenePreset preset) {
     app.domainLocalSolveEnabled = true;
     app.squareDomainDecomposition = true;
     app.domainCount = 48;
-    app.springStiffness = 1.0f;
+    app.structuralCompliance = 1e-7f;
+    app.shearCompliance = 1e-5f;
+    app.bendCompliance = 1e-3f;
     app.clothDamping = 0.995f;
     app.drawSurface = true;
     app.drawWireframe = false;
@@ -166,9 +174,14 @@ void applyPreset(AppState &app, ScenePreset preset) {
   app.cloth.setDomainLocalSolveEnabled(app.domainLocalSolveEnabled);
   app.cloth.setSquareDomainDecompositionEnabled(app.squareDomainDecomposition);
   app.cloth.setDomainCount(app.domainCount);
-  app.cloth.setSpringStiffness(app.springStiffness);
+  app.cloth.setStructuralCompliance(app.structuralCompliance);
+  app.cloth.setShearCompliance(app.shearCompliance);
+  app.cloth.setBendCompliance(app.bendCompliance);
   app.cloth.setDamping(app.clothDamping);
   app.cloth.reset();
+  if (app.gpuSolver.available()) {
+    app.gpuSolver.upload(app.cloth);
+  }
 }
 
 void applyBaseline(AppState &app) { applyPreset(app, ScenePreset::Baseline); }
@@ -248,9 +261,16 @@ void stepSimulation(AppState &app, double now, float dt) {
                              std::cos(t * app.windFrequencyZ)};
     app.lastWindDirection = windDirection;
 
-    app.cloth.simulate(stepDt, std::max(1, app.solverIterations),
-                       Vec3{0.0f, app.gravity, 0.0f}, windDirection,
-                       app.windStrength);
+    if (app.gpuSolverEnabled && app.gpuSolver.available()) {
+      app.gpuSolver.simulate(app.cloth, stepDt,
+                             std::max(1, app.solverIterations),
+                             Vec3{0.0f, app.gravity, 0.0f}, windDirection,
+                             app.windStrength);
+    } else {
+      app.cloth.simulate(stepDt, std::max(1, app.solverIterations),
+                         Vec3{0.0f, app.gravity, 0.0f}, windDirection,
+                         app.windStrength);
+    }
   }
 
   app.requestStep = false;

@@ -11,6 +11,7 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
+find_package(glad CONFIG QUIET)
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
   message(STATUS "glfw3 not found locally – fetching via FetchContent...")
@@ -42,6 +43,7 @@ endif()
 add_executable(clothdd
   src/app.cpp
   src/cloth.cpp
+  src/gpu_solver.cpp
   src/hdri.cpp
   src/main.cpp
   src/render.cpp
@@ -80,6 +82,14 @@ if(OpenEXR_FOUND)
   target_link_libraries(clothdd PRIVATE OpenEXR::OpenEXR Imath::Imath)
 else()
   message(STATUS "OpenEXR not found – HDRI background disabled.")
+endif()
+
+if(glad_FOUND)
+  message(STATUS "GLAD found – GPU compute enabled.")
+  target_compile_definitions(clothdd PRIVATE CLOTHDD_HAVE_GLAD)
+  target_link_libraries(clothdd PRIVATE glad::glad)
+else()
+  message(STATUS "GLAD not found – GPU compute disabled, using legacy GL.")
 endif()
 
 if(APPLE)

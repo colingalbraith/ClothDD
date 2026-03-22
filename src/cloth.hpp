@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -57,11 +58,18 @@ Vec3 cross(const Vec3 &a, const Vec3 &b);
 float length(const Vec3 &value);
 Vec3 normalize(const Vec3 &value);
 
+enum class SpringType : uint8_t {
+  Structural = 0,
+  Shear = 1,
+  Bend = 2,
+};
+
 struct Spring {
   int a = 0;
   int b = 0;
   float restLength = 0.0f;
-  float stiffness = 1.0f;
+  float compliance = 0.0f;
+  SpringType type = SpringType::Structural;
 };
 
 class Cloth {
@@ -83,9 +91,13 @@ public:
   void setDomainLocalSolveEnabled(bool enabled);
   void setDomainCount(int domainCount);
   void setSquareDomainDecompositionEnabled(bool enabled);
-  void setSpringStiffness(float stiffness);
+  void setStructuralCompliance(float c);
+  void setShearCompliance(float c);
+  void setBendCompliance(float c);
   void setDamping(float damping);
-  float springStiffness() const { return m_springStiffness; }
+  float structuralCompliance() const { return m_structuralCompliance; }
+  float shearCompliance() const { return m_shearCompliance; }
+  float bendCompliance() const { return m_bendCompliance; }
   float damping() const { return m_damping; }
 
   int width() const { return m_width; }
@@ -103,6 +115,9 @@ public:
   }
   int workerThreadCount() const;
 
+  std::vector<Vec3> &mutablePositions() { return m_positions; }
+  std::vector<Vec3> &mutableNormals() { return m_normals; }
+  std::vector<Vec3> &mutablePrevPositions() { return m_prevPositions; }
   const std::vector<Vec3> &positions() const { return m_positions; }
   const std::vector<Vec2> &uvs() const { return m_uvs; }
   const std::vector<Vec3> &prevPositions() const { return m_prevPositions; }
@@ -120,7 +135,7 @@ private:
   void buildGrid();
   void buildTopology();
   void rebuildDomainDecomposition();
-  void solveSpringConstraint(const Spring &spring);
+  void solveSpringConstraint(int springIndex, float dtSquared);
   void applyFloorCollision(int pointIndex);
   void applySphereCollision(int pointIndex);
   void enforcePinnedPoints();
@@ -144,6 +159,7 @@ private:
   std::vector<int> m_pinnedIndices;
 
   std::vector<Spring> m_springs;
+  std::vector<float> m_lambdas;
   std::vector<unsigned int> m_triangleIndices;
   std::vector<unsigned int> m_lineIndices;
 
@@ -159,7 +175,9 @@ private:
   bool m_domainLocalSolveEnabled = true;
   int m_domainCount = 4;
   bool m_squareDomainDecompositionEnabled = false;
-  float m_springStiffness = 1.0f;
+  float m_structuralCompliance = 1e-7f;
+  float m_shearCompliance = 1e-5f;
+  float m_bendCompliance = 1e-3f;
   float m_damping = 0.995f;
 
   std::unique_ptr<ThreadPool> m_threadPool;

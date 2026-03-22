@@ -102,32 +102,29 @@ void Cloth::simulate(float dt, int solverIterations, const Vec3 &gravity,
     m_positions[i] += velocity + acceleration * dtSquared;
   }
 
+  // XPBD: reset Lagrange multipliers at the start of each substep.
+  std::fill(m_lambdas.begin(), m_lambdas.end(), 0.0f);
+
   const int iterations = std::max(1, solverIterations);
   for (int iteration = 0; iteration < iterations; ++iteration) {
     const bool useDD = m_domainLocalSolveEnabled && m_domainCount > 1 &&
                        !m_domainSpringIndices.empty();
 
     if (useDD && iteration < iterations - 1) {
-      // Parallel path for the first N-1 iterations: domain-local springs
-      // are solved concurrently, then interface springs sequentially.
       const int domainSlots =
           static_cast<int>(m_domainSpringIndices.size());
-      m_threadPool->run(domainSlots, [this](int d) {
+      m_threadPool->run(domainSlots, [this, dtSquared](int d) {
         for (int springIndex :
              m_domainSpringIndices[static_cast<std::size_t>(d)]) {
-          solveSpringConstraint(
-              m_springs[static_cast<std::size_t>(springIndex)]);
+          solveSpringConstraint(springIndex, dtSquared);
         }
       });
       for (int springIndex : m_interfaceSpringIndices) {
-        solveSpringConstraint(m_springs[static_cast<std::size_t>(springIndex)]);
+        solveSpringConstraint(springIndex, dtSquared);
       }
     } else {
-      // Sequential path: used when DD is off, or as the final iteration
-      // when DD is on.  This ensures the last pass has full Gauss-Seidel
-      // propagation, making DD and non-DD results converge identically.
-      for (const Spring &spring : m_springs) {
-        solveSpringConstraint(spring);
+      for (int i = 0; i < static_cast<int>(m_springs.size()); ++i) {
+        solveSpringConstraint(i, dtSquared);
       }
     }
 
@@ -166,11 +163,22 @@ void Cloth::setSquareDomainDecompositionEnabled(bool enabled) {
   rebuildDomainDecomposition();
 }
 
-void Cloth::setSpringStiffness(float stiffness) {
-  m_springStiffness = std::clamp(stiffness, 0.01f, 1.0f);
-  for (Spring &s : m_springs) {
-    s.stiffness = m_springStiffness;
-  }
+void Cloth::setStructuralCompliance(float c) {
+  m_structuralCompliance = std::max(0.0f, c);
+  for (Spring &s : m_springs)
+    if (s.type == SpringType::Structural) s.compliance = m_structuralCompliance;
+}
+
+void Cloth::setShearCompliance(float c) {
+  m_shearCompliance = std::max(0.0f, c);
+  for (Spring &s : m_springs)
+    if (s.type == SpringType::Shear) s.compliance = m_shearCompliance;
+}
+
+void Cloth::setBendCompliance(float c) {
+  m_bendCompliance = std::max(0.0f, c);
+  for (Spring &s : m_springs)
+    if (s.type == SpringType::Bend) s.compliance = m_bendCompliance;
 }
 
 void Cloth::setDamping(float damping) {
@@ -223,11 +231,14 @@ void Cloth::buildTopology() {
   m_triangleIndices.clear();
   m_lineIndices.clear();
 
-  const auto addSpring = [&](int a, int b) {
+  const auto addSpring = [&](int a, int b, SpringType type) {
     const Vec3 &pa = m_initialPositions[static_cast<std::size_t>(a)];
     const Vec3 &pb = m_initialPositions[static_cast<std::size_t>(b)];
     const float restLen = length(pb - pa);
-    m_springs.push_back(Spring{a, b, restLen, m_springStiffness});
+    float c = m_structuralCompliance;
+    if (type == SpringType::Shear) c = m_shearCompliance;
+    else if (type == SpringType::Bend) c = m_bendCompliance;
+    m_springs.push_back(Spring{a, b, restLen, c, type});
     m_lineIndices.push_back(static_cast<unsigned int>(a));
     m_lineIndices.push_back(static_cast<unsigned int>(b));
   };
@@ -237,10 +248,10 @@ void Cloth::buildTopology() {
     for (int x = 0; x < m_width; ++x) {
       const int p = index(x, y);
       if (x + 1 < m_width) {
-        addSpring(p, index(x + 1, y));
+        addSpring(p, index(x + 1, y), SpringType::Structural);
       }
       if (y + 1 < m_height) {
-        addSpring(p, index(x, y + 1));
+        addSpring(p, index(x, y + 1), SpringType::Structural);
       }
     }
   }
@@ -248,22 +259,24 @@ void Cloth::buildTopology() {
   // Shear springs (diagonals) — resist parallelogram deformation.
   for (int y = 0; y + 1 < m_height; ++y) {
     for (int x = 0; x + 1 < m_width; ++x) {
-      addSpring(index(x, y), index(x + 1, y + 1));
-      addSpring(index(x + 1, y), index(x, y + 1));
+      addSpring(index(x, y), index(x + 1, y + 1), SpringType::Shear);
+      addSpring(index(x + 1, y), index(x, y + 1), SpringType::Shear);
     }
   }
 
   // Bend springs (skip-one) — resist sharp folding.
   for (int y = 0; y < m_height; ++y) {
     for (int x = 0; x + 2 < m_width; ++x) {
-      addSpring(index(x, y), index(x + 2, y));
+      addSpring(index(x, y), index(x + 2, y), SpringType::Bend);
     }
   }
   for (int y = 0; y + 2 < m_height; ++y) {
     for (int x = 0; x < m_width; ++x) {
-      addSpring(index(x, y), index(x, y + 2));
+      addSpring(index(x, y), index(x, y + 2), SpringType::Bend);
     }
   }
+
+  m_lambdas.assign(m_springs.size(), 0.0f);
 
   for (int y = 0; y + 1 < m_height; ++y) {
     for (int x = 0; x + 1 < m_width; ++x) {
@@ -352,7 +365,8 @@ void Cloth::rebuildDomainDecomposition() {
   }
 }
 
-void Cloth::solveSpringConstraint(const Spring &spring) {
+void Cloth::solveSpringConstraint(int springIndex, float dtSquared) {
+  const Spring &spring = m_springs[static_cast<std::size_t>(springIndex)];
   const std::size_t a = static_cast<std::size_t>(spring.a);
   const std::size_t b = static_cast<std::size_t>(spring.b);
 
@@ -364,23 +378,23 @@ void Cloth::solveSpringConstraint(const Spring &spring) {
     return;
   }
 
-  const float displacement = (distance - spring.restLength) / distance;
-  const Vec3 correction = delta * (0.5f * spring.stiffness * displacement);
-  const bool aPinned = m_pinned[a];
-  const bool bPinned = m_pinned[b];
+  // XPBD: compliance-based correction with Lagrange multiplier accumulation.
+  const float C = distance - spring.restLength;
+  const float wa = m_pinned[a] ? 0.0f : 1.0f;
+  const float wb = m_pinned[b] ? 0.0f : 1.0f;
+  const float wSum = wa + wb;
+  if (wSum <= kEpsilon) {
+    return;
+  }
 
-  if (!aPinned && !bPinned) {
-    pa += correction;
-    pb -= correction;
-    return;
-  }
-  if (aPinned && !bPinned) {
-    pb -= delta * (spring.stiffness * displacement);
-    return;
-  }
-  if (!aPinned && bPinned) {
-    pa += delta * (spring.stiffness * displacement);
-  }
+  const float alphaTilde = spring.compliance / std::max(dtSquared, 1e-12f);
+  float &lambda = m_lambdas[static_cast<std::size_t>(springIndex)];
+  const float deltaLambda = -(C + alphaTilde * lambda) / (wSum + alphaTilde);
+  lambda += deltaLambda;
+
+  const Vec3 correction = (delta / distance) * deltaLambda;
+  pa -= correction * wa;
+  pb += correction * wb;
 }
 
 void Cloth::applyFloorCollision(int pointIndex) {

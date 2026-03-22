@@ -4,8 +4,19 @@
 #pragma once
 
 #include "cloth.hpp"
+#include "gpu_solver.hpp"
 
+#ifdef CLOTHDD_HAVE_GLAD
+#include <glad/glad.h>
+#endif
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#if !defined(CLOTHDD_HAVE_GLAD)
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+#include <GL/gl.h>
+#endif
 
 #include <array>
 #include <string>
@@ -36,7 +47,9 @@ struct AppState {
   bool domainLocalSolveEnabled = true;
   bool squareDomainDecomposition = false;
   int domainCount = 12;
-  float springStiffness = 1.0f;
+  float structuralCompliance = 1e-7f;
+  float shearCompliance = 1e-5f;
+  float bendCompliance = 1e-3f;
   float clothDamping = 0.995f;
   Vec3 lastWindDirection{1.0f, 0.0f, 0.0f};
 
@@ -73,6 +86,8 @@ struct AppState {
   bool showUi = true;
   bool showImGuiDemo = false;
   bool msaaEnabled = true;
+  bool gpuSolverEnabled = false;
+  GpuSolver gpuSolver;
   float smoothedFps = 0.0f;
 
   static constexpr int kFpsHistorySize = 128;
