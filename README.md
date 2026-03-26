@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="ClothDD banner" width="100%">
+  <img <img width="2816" height="1536" alt="clothDD" src="https://github.com/user-attachments/assets/dc97e44c-5f42-49d8-a5b6-c136f45b9b95" />
 </p>
 
 <h1 align="center">ClothDD</h1>
